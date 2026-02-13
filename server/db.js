@@ -69,11 +69,11 @@ const initSchema = async () => {
 };
 
 // Initialize schema
-initSchema();
-
+let initPromise = initSchema();
 
 // Helper methods to unify API
 const methods = {
+    ready: () => initPromise,
     isPostgres,
 
     // Execute a query that doesn't return rows (INSERT, UPDATE, DELETE)

@@ -14,6 +14,17 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Ensure DB is ready before every request
+app.use(async (req, res, next) => {
+    try {
+        await dbModule.ready();
+        next();
+    } catch (err) {
+        console.error('Database initialization failed:', err);
+        res.status(500).json({ error: 'Database initialization failed: ' + err.message });
+    }
+});
+
 // Configure Multer for memory storage (processing images in-memory)
 const upload = multer({
     storage: multer.memoryStorage(),
