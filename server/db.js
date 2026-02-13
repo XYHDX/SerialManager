@@ -20,13 +20,24 @@ if (process.env.POSTGRES_URL) {
     });
 } else {
     // Fallback to SQLite
-    const Database = require('better-sqlite3');
-    const dbPath = path.join(__dirname, 'serials.db');
-    console.log('Using local SQLite database at:', dbPath);
+    // Use dynamic require to prevent Vercel from bundling better-sqlite3 in production
+    // where it might fail to build.
+    let Database;
     try {
-        db = new Database(dbPath, { verbose: console.log });
-    } catch (err) {
-        console.error("Failed to initialize SQLite:", err);
+        const sqliteModule = 'better-sqlite3';
+        Database = require(sqliteModule);
+    } catch (e) {
+        console.error("SQLite module not found (expected in Vercel env if PG is missing):", e);
+    }
+
+    if (Database) {
+        const dbPath = path.join(__dirname, 'serials.db');
+        console.log('Using local SQLite database at:', dbPath);
+        try {
+            db = new Database(dbPath, { verbose: console.log });
+        } catch (err) {
+            console.error("Failed to initialize SQLite:", err);
+        }
     }
 }
 
