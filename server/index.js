@@ -476,6 +476,17 @@ app.post('/api/reset', async (req, res) => {
  */
 app.get('/api/health', async (req, res) => {
     try {
+        // Basic server check
+        if (!req.query.db) {
+            return res.json({
+                status: 'ok', server: 'running', env: {
+                    hasPostgres: !!process.env.POSTGRES_URL,
+                    node: process.version
+                }
+            });
+        }
+
+        // DB check
         const result = await dbModule.get('SELECT 1 as val');
         res.json({ status: 'ok', db: 'connected', result });
     } catch (err) {
