@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-import React, { useState, useEffect } from 'react';
-
 const DataManagement = ({ onDataChanged }) => {
     const [importStatus, setImportStatus] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
