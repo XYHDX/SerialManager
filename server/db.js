@@ -7,17 +7,17 @@ require('dotenv').config();
 let db;
 let isPostgres = false;
 
-// Check for Vercel Postgres
-if (process.env.POSTGRES_URL) {
-    const { createPool } = require('@vercel/postgres');
-    console.log('Using Vercel Postgres database w/ POSTGRES_URL');
+// Check for Neon/Vercel Postgres
+// Vercel/Neon uses DATABASE_URL or POSTGRES_URL
+const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
+if (connectionString) {
+    // Use Neon Serverless HTTP Driver
+    const { neon } = require('@neondatabase/serverless');
+    console.log('Using Neon Database (HTTP Driver)');
     isPostgres = true;
-    db = createPool({
-        connectionString: process.env.POSTGRES_URL,
-        ssl: {
-            rejectUnauthorized: false
-        }
-    });
+    db = neon(connectionString);
+} else {
     // Fallback to SQLite
     // Use dynamic require via createRequire to bypass Vercel/Webpack bundler analysis completely
     let Database;
@@ -53,8 +53,7 @@ const initSchema = async () => {
     );
   `;
 
-    // SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT, Postgres uses SERIAL
-    // We can use a slightly different query for SQLite to maintain compatibility context
+    // SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT
     const sqliteCreateTableQuery = `
     CREATE TABLE IF NOT EXISTS serials (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,12 +66,13 @@ const initSchema = async () => {
 
     if (isPostgres) {
         try {
-            await db.query(createTableQuery);
+            // Neon http driver executes directly
+            await db(createTableQuery);
             console.log('Postgres schema initialized.');
         } catch (err) {
             console.error('Failed to init Postgres schema:', err);
         }
-    } else {
+    } else if (db) {
         db.exec(sqliteCreateTableQuery);
         console.log('SQLite schema initialized.');
     }
@@ -87,20 +87,25 @@ const methods = {
     isPostgres,
 
     // Execute a query that doesn't return rows (INSERT, UPDATE, DELETE)
-    // Returns { changes: number } or similar
     run: async (query, params = []) => {
         if (isPostgres) {
-            // Convert ? to $1, $2, etc. logic is tricky with simple regex if params are mixed.
-            // But we can just enforce standard parameterized queries in the app logic or handle simple conversion here.
-            // For simplicity, let's assume the app sends standard SQL and we convert ? -> $n
+            // Convert ? to $1, $2 for Postgres
             let pIdx = 1;
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
 
             try {
-                const result = await db.query(pgQuery, params);
-                return { changes: result.rowCount };
+                // Neon HTTP returns result rows directly.
+                // It does NOT return rowCount metadata easily.
+                // We'll return a mock object that implies success.
+                await db(pgQuery, params);
+                return { changes: 1 };
             } catch (e) {
-                // Handle unique constraint violation specifically if possible, or just throw
+                console.error("Query failed:", pgQuery, params, e);
+                // Duplicate key error code in Postgres is 23505
+                if (e.code === '23505') {
+                    // For sqlite compatible return, changes=0 acts as "no insert"
+                    return { changes: 0 };
+                }
                 throw e;
             }
         } else {
@@ -114,8 +119,8 @@ const methods = {
         if (isPostgres) {
             let pIdx = 1;
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
-            const result = await db.query(pgQuery, params);
-            return result.rows[0];
+            const rows = await db(pgQuery, params);
+            return rows[0];
         } else {
             const stmt = db.prepare(query);
             return stmt.get(...params);
@@ -127,45 +132,37 @@ const methods = {
         if (isPostgres) {
             let pIdx = 1;
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
-            const result = await db.query(pgQuery, params);
-            return result.rows;
+            const rows = await db(pgQuery, params);
+            return rows;
         } else {
             const stmt = db.prepare(query);
             return stmt.all(...params);
         }
     },
 
-    // Transaction wrapper
-    // SQLite 'transaction' returns a function that executes immediately when called.
-    // implementation: db.transaction(fn) -> returns executable function.
-    // For conversion, we'll try to keep the signature similar but it might need refactoring in index.js specifically.
-    // Better-sqlite3 transactions allow synchronous execution which is fast.
-    // Postgres transactions are async.
-    // We will expose the raw db object for advanced usage but recommend using helpers.
-    // This part is the trickiest validation point.
-    // For now, let's export the raw DB and handle logic in index.js
+    // Raw access (use with caution)
     raw: db,
-    path: !isPostgres ? path.join(__dirname, 'serials.db') : null,
+    path: !isPostgres && db ? path.join(__dirname, 'serials.db') : null,
 
     close: () => {
         if (!isPostgres && db && db.open) {
             db.close();
-            console.log('Database connection closed.');
         }
-        // Postgres pool handles itself usually, or we can await db.end() if using pool directly
     },
 
     reconnect: async () => {
+        // Only needed for local sqlite reset feature
         if (!isPostgres) {
             if (db && db.open) db.close();
-            const Database = require('better-sqlite3');
-            const dbPath = path.join(__dirname, 'serials.db');
-            db = new Database(dbPath, { verbose: console.log });
-            await initSchema();
-            console.log('Database connection reopened.');
-
-            // Re-bind raw
-            methods.raw = db;
+            try {
+                const { createRequire } = require('module');
+                const customRequire = createRequire(__filename);
+                const Database = customRequire('better-sqlite3');
+                const dbPath = path.join(__dirname, 'serials.db');
+                db = new Database(dbPath, { verbose: console.log });
+                methods.raw = db;
+                await initSchema();
+            } catch (e) { console.error(e) }
         }
     }
 };

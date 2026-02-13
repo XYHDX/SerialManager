@@ -11,13 +11,15 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "@vercel/blob": "^2.2.0",
-    "@vercel/postgres": "^0.10.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "multer": "^2.0.2",
-    "pg": "^8.18.0"
+    "ws": "^8.19.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "better-sqlite3": "^12.6.2"
+  }
 }
