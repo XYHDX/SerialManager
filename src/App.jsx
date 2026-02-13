@@ -27,23 +27,31 @@ function App() {
     fetchSerials();
   }, []);
 
-  const addSerials = (newSerialsList) => {
-    // Determine unique locally for immediate feedback
-    const uniqueNew = newSerialsList.filter(s => !serials.includes(s));
-    const duplicates = newSerialsList.length - uniqueNew.length;
+  const addSerials = async (newSerialsList) => {
+    try {
+      const res = await fetch('/api/serials/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serials: newSerialsList })
+      });
 
-    if (uniqueNew.length > 0) {
-      setSerials(prev => [...prev, ...uniqueNew]);
-      // Note: Data persistence for manual entry is currently client-side only 
-      // until a reload fetches fresh data, unless we add a POST endpoint for manual entry.
-      // But for this task scope, let's assume the user uses Import/OCR primarily.
+      if (res.ok) {
+        const result = await res.json();
+        // Refresh data to show updates in search and data management
+        await fetchSerials();
+        return {
+          added: result.added,
+          duplicates: result.duplicates,
+          total: serials.length + result.added // Approximate/Client-side view
+        };
+      } else {
+        console.error('Batch add failed');
+        return { added: 0, duplicates: 0, error: true };
+      }
+    } catch (err) {
+      console.error('Batch add network error:', err);
+      return { added: 0, duplicates: 0, error: true };
     }
-
-    return {
-      added: uniqueNew.length,
-      duplicates: duplicates,
-      total: serials.length + uniqueNew.length
-    };
   };
 
   const checkSerial = (query) => {

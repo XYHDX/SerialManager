@@ -4,7 +4,7 @@ const AddSerial = ({ onAddBatch }) => {
   const [input, setInput] = useState('');
   const [message, setMessage] = useState(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
@@ -27,10 +27,13 @@ const AddSerial = ({ onAddBatch }) => {
 
     if (serialsToAdd.length === 0) return;
 
-    const result = onAddBatch(serialsToAdd);
+    const result = await onAddBatch(serialsToAdd);
 
+    if (result.error) {
+      setMessage({ type: 'error', text: 'Failed to add serials. Check network or server.' });
+    }
     // Feedback message
-    if (result.added > 0) {
+    else if (result.added > 0) {
       const dupMsg = result.duplicates > 0 ? ` (${result.duplicates} duplicates skipped)` : '';
       setMessage({
         type: 'success',

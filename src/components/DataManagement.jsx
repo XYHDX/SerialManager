@@ -114,6 +114,7 @@ const DataManagement = ({ onDataChanged }) => {
                                 <th style={{ padding: '0.75rem' }}>Source Filename</th>
                                 <th style={{ padding: '0.75rem' }}>Extracted At</th>
                                 <th style={{ padding: '0.75rem' }}>Status</th>
+                                <th style={{ padding: '0.75rem', textAlign: 'center' }}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -136,6 +137,31 @@ const DataManagement = ({ onDataChanged }) => {
                                             }}>
                                                 {rec.status}
                                             </span>
+                                        </td>
+                                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                            <button
+                                                className="btn"
+                                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: '#ff4444', color: 'white', border: 'none' }}
+                                                onClick={async () => {
+                                                    if (window.confirm(`Are you sure you want to delete ${rec.serial_number}?`)) {
+                                                        try {
+                                                            const res = await fetch(`/api/serials/${rec.serial_number}`, { method: 'DELETE' });
+                                                            if (res.ok) {
+                                                                // Refresh both grid and parent state
+                                                                if (onDataChanged) onDataChanged();
+                                                                fetchRecords(pagination.current, searchTerm);
+                                                            } else {
+                                                                alert('Failed to delete serial.');
+                                                            }
+                                                        } catch (e) {
+                                                            console.error(e);
+                                                            alert('Network error.');
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                Delete
+                                            </button>
                                         </td>
                                     </tr>
                                 ))

@@ -94,7 +94,7 @@ app.post('/api/extract', (req, res) => {
                 let blobUrl = file.originalname;
                 if (process.env.BLOB_READ_WRITE_TOKEN) {
                     try {
-                        const blob = await put(file.originalname, file.buffer, { access: 'public' });
+                        const blob = await put('receipts/' + file.originalname, file.buffer, { access: 'public' });
                         blobUrl = blob.url;
                         console.log(`Uploaded to Blob: ${blobUrl}`);
                     } catch (blobErr) {
@@ -358,6 +358,64 @@ app.post('/api/import', csvUpload.single('database'), async (req, res) => {
     } catch (err) {
         console.error('Import failed:', err);
         res.status(500).json({ error: 'CSV import failed: ' + err.message });
+    }
+});
+
+/**
+ * POST /api/serials/batch
+ * Manually add a batch of serials.
+ */
+app.post('/api/serials/batch', async (req, res) => {
+    const { serials } = req.body;
+    if (!serials || !Array.isArray(serials) || serials.length === 0) {
+        return res.status(400).json({ error: 'Invalid serials list.' });
+    }
+
+    const insertSql = dbModule.isPostgres
+        ? `INSERT INTO serials (serial_number, source_filename, status) VALUES ($1, 'manual_entry', 'confirmed') ON CONFLICT(serial_number) DO NOTHING`
+        : `INSERT INTO serials (serial_number, source_filename, status) VALUES (?, 'manual_entry', 'confirmed') ON CONFLICT(serial_number) DO NOTHING`;
+
+    let inserted = 0;
+    let duplicates = 0;
+
+    try {
+        // Sequential execution for simplicity
+        for (const serial of serials) {
+            try {
+                const info = await dbModule.run(insertSql, [serial]);
+                if (info.changes > 0) inserted++;
+                else duplicates++;
+            } catch (e) {
+                console.error(`Failed to insert manual serial ${serial}:`, e);
+            }
+        }
+        res.json({ success: true, added: inserted, duplicates: duplicates });
+    } catch (err) {
+        console.error('Batch add failed:', err);
+        res.status(500).json({ error: 'Batch add failed.' });
+    }
+});
+
+/**
+ * DELETE /api/serials/:serial
+ * Remove a serial number.
+ */
+app.delete('/api/serials/:serial', async (req, res) => {
+    const serial = req.params.serial;
+    if (!serial) return res.status(400).json({ error: 'Serial required.' });
+
+    const deleteSql = 'DELETE FROM serials WHERE serial_number = ?'; // dbModule handles ? -> $1
+
+    try {
+        const info = await dbModule.run(deleteSql, [serial]);
+        if (info.changes > 0) {
+            res.json({ success: true, message: 'Deleted successfully.' });
+        } else {
+            res.status(404).json({ error: 'Serial not found.' });
+        }
+    } catch (err) {
+        console.error('Delete failed:', err);
+        res.status(500).json({ error: 'Delete failed.' });
     }
 });
 
