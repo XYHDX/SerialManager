@@ -9,10 +9,10 @@ let isPostgres = false;
 
 // Check for Vercel Postgres
 if (process.env.POSTGRES_URL) {
-    const { sql } = require('@vercel/postgres');
+    const { db: vercelDb } = require('@vercel/postgres');
     console.log('Using Vercel Postgres database w/ POSTGRES_URL');
     isPostgres = true;
-    db = sql; // db will be the sql template tag function essentially, or clearer: use functions.
+    db = vercelDb;
 } else {
     // Fallback to SQLite
     const Database = require('better-sqlite3');
@@ -37,7 +37,7 @@ const initSchema = async () => {
       status TEXT DEFAULT 'confirmed'
     );
   `;
-    
+
     // SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT, Postgres uses SERIAL
     // We can use a slightly different query for SQLite to maintain compatibility context
     const sqliteCreateTableQuery = `
@@ -70,7 +70,7 @@ initSchema();
 // Helper methods to unify API
 const methods = {
     isPostgres,
-    
+
     // Execute a query that doesn't return rows (INSERT, UPDATE, DELETE)
     // Returns { changes: number } or similar
     run: async (query, params = []) => {
@@ -80,7 +80,7 @@ const methods = {
             // For simplicity, let's assume the app sends standard SQL and we convert ? -> $n
             let pIdx = 1;
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
-            
+
             try {
                 const result = await db.query(pgQuery, params);
                 return { changes: result.rowCount };
@@ -131,7 +131,7 @@ const methods = {
     // For now, let's export the raw DB and handle logic in index.js
     raw: db,
     path: !isPostgres ? path.join(__dirname, 'serials.db') : null,
-    
+
     close: () => {
         if (!isPostgres && db && db.open) {
             db.close();
@@ -139,7 +139,7 @@ const methods = {
         }
         // Postgres pool handles itself usually, or we can await db.end() if using pool directly
     },
-    
+
     reconnect: async () => {
         if (!isPostgres) {
             if (db && db.open) db.close();
@@ -148,9 +148,9 @@ const methods = {
             db = new Database(dbPath, { verbose: console.log });
             await initSchema();
             console.log('Database connection reopened.');
-            
+
             // Re-bind raw
-            methods.raw = db; 
+            methods.raw = db;
         }
     }
 };
