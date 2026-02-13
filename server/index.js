@@ -459,6 +459,20 @@ app.post('/api/reset', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/health
+ * Debug endpoint to check DB connection
+ */
+app.get('/api/health', async (req, res) => {
+    try {
+        const result = await dbModule.get('SELECT 1 as val');
+        res.json({ status: 'ok', db: 'connected', result });
+    } catch (err) {
+        console.error('Health check failed:', err);
+        res.status(500).json({ status: 'error', message: err.message, stack: err.stack });
+    }
+});
+
 // For Vercel, we export the app.
 // For local 'node index.js', we listen.
 if (require.main === module) {

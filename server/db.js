@@ -14,6 +14,9 @@ if (process.env.POSTGRES_URL) {
     isPostgres = true;
     db = createPool({
         connectionString: process.env.POSTGRES_URL,
+        ssl: {
+            rejectUnauthorized: false
+        }
     });
 } else {
     // Fallback to SQLite
