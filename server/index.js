@@ -4,7 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const dbModule = require('./db');
-const { extractSerials } = require('./ocr');
+// const { extractSerials } = require('./ocr'); // Temporarily disabled for debugging
 const { put } = require('@vercel/blob');
 
 const app = express();
@@ -114,7 +114,9 @@ app.post('/api/extract', (req, res) => {
                 }
 
                 try {
-                    const serials = await extractSerials(file.buffer, file.originalname);
+                    // const serials = await extractSerials(file.buffer, file.originalname);
+                    const serials = []; // Stubbed
+                    console.log("OCR Disabled for debugging");
 
                     let fileInserted = 0;
                     let fileDuplicates = 0;
