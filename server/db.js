@@ -9,10 +9,12 @@ let isPostgres = false;
 
 // Check for Vercel Postgres
 if (process.env.POSTGRES_URL) {
-    const { db: vercelDb } = require('@vercel/postgres');
+    const { createPool } = require('@vercel/postgres');
     console.log('Using Vercel Postgres database w/ POSTGRES_URL');
     isPostgres = true;
-    db = vercelDb;
+    db = createPool({
+        connectionString: process.env.POSTGRES_URL,
+    });
 } else {
     // Fallback to SQLite
     const Database = require('better-sqlite3');
