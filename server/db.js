@@ -18,16 +18,15 @@ if (process.env.POSTGRES_URL) {
             rejectUnauthorized: false
         }
     });
-} else {
     // Fallback to SQLite
-    // Use dynamic require to prevent Vercel from bundling better-sqlite3 in production
-    // where it might fail to build.
+    // Use dynamic require via createRequire to bypass Vercel/Webpack bundler analysis completely
     let Database;
     try {
-        const sqliteModule = 'better-sqlite3';
-        Database = require(sqliteModule);
+        const { createRequire } = require('module');
+        const customRequire = createRequire(__filename);
+        Database = customRequire('better-sqlite3');
     } catch (e) {
-        console.error("SQLite module not found (expected in Vercel env if PG is missing):", e);
+        console.error("SQLite module not found (expected in Vercel env):", e.message);
     }
 
     if (Database) {

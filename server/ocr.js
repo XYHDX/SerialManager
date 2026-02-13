@@ -1,5 +1,6 @@
-const Tesseract = require('tesseract.js');
-const sharp = require('sharp');
+// Lazy load dependencies to prevent startup crashes on Vercel
+// const Tesseract = require('tesseract.js');
+// const sharp = require('sharp');
 const fs = require('fs');
 
 /**
@@ -8,13 +9,14 @@ const fs = require('fs');
  */
 async function preprocessImage(imageBuffer) {
     try {
+        const sharp = require('sharp');
         return await sharp(imageBuffer)
             .grayscale()
             .resize({ width: 2000, withoutEnlargement: false }) // Upscale content
             .sharpen()
             .toBuffer();
     } catch (err) {
-        console.error('Image preprocessing failed:', err);
+        console.error('Image preprocessing failed (sharp missing or error):', err.message);
         return imageBuffer; // Fallback to original
     }
 }
@@ -26,10 +28,18 @@ async function preprocessImage(imageBuffer) {
 async function extractSerials(imageBuffer, filename) {
     const processedImage = await preprocessImage(imageBuffer);
 
-    const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
-        logger: m => console.log(`[OCR] ${filename}: ${m.status} (${(m.progress * 100).toFixed(0)}%)`),
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    });
+    let text = '';
+    try {
+        const Tesseract = require('tesseract.js');
+        const result = await Tesseract.recognize(processedImage, 'eng', {
+            logger: m => console.log(`[OCR] ${filename}: ${m.status} (${(m.progress * 100).toFixed(0)}%)`),
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        });
+        text = result.data.text;
+    } catch (e) {
+        console.error("OCR Engine failed to load or run:", e);
+        throw new Error("OCR Engine unavailable: " + e.message);
+    }
 
     // Extract candidates using regex
     // Strict pattern: 2 letters, 8 numbers, 1 letter
