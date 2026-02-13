@@ -12,11 +12,11 @@ let isPostgres = false;
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
 if (connectionString) {
-    // Use Neon Serverless HTTP Driver
-    const { neon } = require('@neondatabase/serverless');
-    console.log('Using Neon Database (HTTP Driver)');
+    // Use Neon Serverless Pool (simulates pg.Pool over WebSocket/HTTP)
+    const { Pool } = require('@neondatabase/serverless');
+    console.log('Using Neon Database (Pool)');
     isPostgres = true;
-    db = neon(connectionString);
+    db = new Pool({ connectionString });
 } else {
     // Fallback to SQLite
     // Use dynamic require via createRequire to bypass Vercel/Webpack bundler analysis completely
@@ -26,7 +26,7 @@ if (connectionString) {
         const customRequire = createRequire(__filename);
         Database = customRequire('better-sqlite3');
     } catch (e) {
-        console.error("SQLite module not found (expected in Vercel env):", e.message);
+        console.error("SQLite module not found (expected in Vercel env if PG is missing):", e.message);
     }
 
     if (Database) {
@@ -66,8 +66,8 @@ const initSchema = async () => {
 
     if (isPostgres) {
         try {
-            // Neon http driver executes directly
-            await db(createTableQuery);
+            // Pool uses .query()
+            await db.query(createTableQuery);
             console.log('Postgres schema initialized.');
         } catch (err) {
             console.error('Failed to init Postgres schema:', err);
@@ -87,6 +87,7 @@ const methods = {
     isPostgres,
 
     // Execute a query that doesn't return rows (INSERT, UPDATE, DELETE)
+    // Returns { changes: number } or similar
     run: async (query, params = []) => {
         if (isPostgres) {
             // Convert ? to $1, $2 for Postgres
@@ -94,16 +95,13 @@ const methods = {
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
 
             try {
-                // Neon HTTP returns result rows directly.
-                // It does NOT return rowCount metadata easily.
-                // We'll return a mock object that implies success.
-                await db(pgQuery, params);
-                return { changes: 1 };
+                // Pool returns standard PG result object with rowCount
+                const result = await db.query(pgQuery, params);
+                return { changes: result.rowCount };
             } catch (e) {
                 console.error("Query failed:", pgQuery, params, e);
                 // Duplicate key error code in Postgres is 23505
                 if (e.code === '23505') {
-                    // For sqlite compatible return, changes=0 acts as "no insert"
                     return { changes: 0 };
                 }
                 throw e;
@@ -119,8 +117,8 @@ const methods = {
         if (isPostgres) {
             let pIdx = 1;
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
-            const rows = await db(pgQuery, params);
-            return rows[0];
+            const result = await db.query(pgQuery, params);
+            return result.rows[0];
         } else {
             const stmt = db.prepare(query);
             return stmt.get(...params);
@@ -132,26 +130,27 @@ const methods = {
         if (isPostgres) {
             let pIdx = 1;
             const pgQuery = query.replace(/\?/g, () => `$${pIdx++}`);
-            const rows = await db(pgQuery, params);
-            return rows;
+            const result = await db.query(pgQuery, params);
+            return result.rows;
         } else {
             const stmt = db.prepare(query);
             return stmt.all(...params);
         }
     },
 
-    // Raw access (use with caution)
+    // Raw access
     raw: db,
     path: !isPostgres && db ? path.join(__dirname, 'serials.db') : null,
 
     close: () => {
         if (!isPostgres && db && db.open) {
             db.close();
+        } else if (isPostgres && db) {
+            db.end(); // Pool close
         }
     },
 
     reconnect: async () => {
-        // Only needed for local sqlite reset feature
         if (!isPostgres) {
             if (db && db.open) db.close();
             try {
