@@ -114,9 +114,10 @@ app.post('/api/extract', (req, res) => {
                 }
 
                 try {
-                    // const serials = await extractSerials(file.buffer, file.originalname);
-                    const serials = []; // Stubbed
-                    console.log("OCR Disabled for debugging");
+                    console.log(`Starting OCR for ${file.originalname}...`);
+                    // Lazy load OCR to prevent startup timeout
+                    const { extractSerials } = require('./ocr');
+                    const serials = await extractSerials(file.buffer, file.originalname);
 
                     let fileInserted = 0;
                     let fileDuplicates = 0;
@@ -203,7 +204,7 @@ app.get('/api/records', async (req, res) => {
         // Postgres uses LIMIT $x OFFSET $y
         // Our adapter handles the params conversion
         const sql = `
-            SELECT serial_number, source_filename, extracted_at, status 
+            SELECT id, serial_number, source_filename, extracted_at, status 
             FROM serials 
             WHERE serial_number LIKE ? 
             ORDER BY id DESC 
@@ -406,6 +407,38 @@ app.post('/api/serials/batch', async (req, res) => {
     } catch (err) {
         console.error('Batch add failed:', err);
         res.status(500).json({ error: 'Batch add failed.' });
+    }
+});
+
+/**
+ * PUT /api/serials/:id
+ * Update a serial number.
+ */
+app.put('/api/serials/:id', async (req, res) => {
+    const id = req.params.id;
+    const { serial_number, status } = req.body;
+
+    if (!id || !serial_number) {
+        return res.status(400).json({ error: 'ID and Serial Number required.' });
+    }
+
+    const updateSql = dbModule.isPostgres
+        ? 'UPDATE serials SET serial_number = $1, status = $2 WHERE id = $3'
+        : 'UPDATE serials SET serial_number = ?, status = ? WHERE id = ?';
+
+    try {
+        const info = await dbModule.run(updateSql, [serial_number, status || 'confirmed', id]);
+        if (info.changes > 0) {
+            res.json({ success: true, message: 'Updated successfully.' });
+        } else {
+            res.status(404).json({ error: 'Record not found.' });
+        }
+    } catch (err) {
+        console.error('Update failed:', err);
+        if (err.code === '23505' || err.message.includes('UNIQUE')) {
+            return res.status(409).json({ error: 'Serial number already exists.' });
+        }
+        res.status(500).json({ error: 'Update failed.' });
     }
 });
 
